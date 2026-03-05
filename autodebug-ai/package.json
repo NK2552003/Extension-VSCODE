@@ -1,0 +1,219 @@
+{
+  "name": "autodebug-ai",
+  "displayName": "AutoDebug AI – Intelligent Debugging & Error Automation",
+  "description": "Real-time AI debugging assistant powered by GitHub Copilot and GitHub Models. Analyzes errors, traces root causes, simplifies stack traces, detects performance issues, shows git blame, suggests one-click AI fixes, and intelligently splits large modules using ASTra (AST-driven module decomposition).",
+  "version": "1.1.0",
+  "engines": {
+    "vscode": "^1.90.0"
+  },
+  "extensionDependencies": [],
+  "categories": [
+    "Debuggers",
+    "Other"
+  ],
+  "keywords": [
+    "debug",
+    "error",
+    "ai",
+    "automation",
+    "stack trace",
+    "module splitter",
+    "refactoring",
+    "ASTra",
+    "code smell",
+    "maintainability"
+  ],
+  "activationEvents": [
+    "onStartupFinished"
+  ],
+  "main": "./out/extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "autodebug.summarizeError",
+        "title": "AutoDebug: Summarize Error",
+        "icon": "$(bug)"
+      },
+      {
+        "command": "autodebug.explainCode",
+        "title": "AutoDebug: Explain Selected Code",
+        "icon": "$(info)"
+      },
+      {
+        "command": "autodebug.findRootCause",
+        "title": "AutoDebug: Find Root Cause",
+        "icon": "$(search)"
+      },
+      {
+        "command": "autodebug.showDashboard",
+        "title": "AutoDebug: Open Dashboard",
+        "icon": "$(dashboard)"
+      },
+      {
+        "command": "autodebug.clearErrors",
+        "title": "AutoDebug: Clear All Errors",
+        "icon": "$(clear-all)"
+      },
+      {
+        "command": "autodebug.showHeatmap",
+        "title": "AutoDebug: Show Error Heatmap",
+        "icon": "$(graph)"
+      },
+      {
+        "command": "autodebug.analyzeWorkspace",
+        "title": "AutoDebug: Analyze Workspace",
+        "icon": "$(search-fuzzy)"
+      },
+      {
+        "command": "autodebug.analyzePerformance",
+        "title": "AutoDebug: Analyze Performance",
+        "icon": "$(dashboard)"
+      },
+      {
+        "command": "autodebug.showBlame",
+        "title": "AutoDebug: Show Git Blame for Line",
+        "icon": "$(git-commit)"
+      },
+      {
+        "command": "autodebug.splitModule",
+        "title": "AutoDebug: Split Module (ASTra v2)",
+        "icon": "$(type-hierarchy-sub)",
+        "category": "AutoDebug AI"
+      }
+    ],
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "autodebug-sidebar",
+          "title": "AutoDebug AI",
+          "icon": "resources/icon.svg"
+        }
+      ]
+    },
+    "views": {
+      "autodebug-sidebar": [
+        {
+          "type": "webview",
+          "id": "autodebug.sidebarView",
+          "name": "AutoDebug AI",
+          "icon": "resources/icon.svg"
+        }
+      ]
+    },
+    "menus": {
+      "editor/context": [
+        {
+          "command": "autodebug.summarizeError",
+          "group": "autodebug@1",
+          "when": "editorHasSelection"
+        },
+        {
+          "command": "autodebug.explainCode",
+          "group": "autodebug@2",
+          "when": "editorHasSelection"
+        },
+        {
+          "command": "autodebug.findRootCause",
+          "group": "autodebug@3"
+        },
+        {
+          "command": "autodebug.analyzePerformance",
+          "group": "autodebug@4"
+        },
+        {
+          "command": "autodebug.showBlame",
+          "group": "autodebug@5"
+        },
+        {
+          "command": "autodebug.splitModule",
+          "group": "autodebug@6"
+        }
+      ],
+      "editor/title": [
+        {
+          "command": "autodebug.showDashboard",
+          "group": "navigation"
+        }
+      ]
+    },
+    "configuration": {
+      "title": "AutoDebug AI",
+      "properties": {
+        "autodebug.enableRealTimeAnalysis": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable real-time error analysis as diagnostics change."
+        },
+        "autodebug.maxErrorsToTrack": {
+          "type": "number",
+          "default": 100,
+          "description": "Maximum number of errors to track at once."
+        },
+        "autodebug.filterLibraryFrames": {
+          "type": "boolean",
+          "default": true,
+          "description": "Filter out node_modules frames from stack traces."
+        },
+        "autodebug.enableHeatmap": {
+          "type": "boolean",
+          "default": true,
+          "description": "Track and display error heatmap."
+        },
+        "autodebug.clusterSimilarErrors": {
+          "type": "boolean",
+          "default": true,
+          "description": "Group similar errors into clusters."
+        },
+        "autodebug.aiBackend": {
+          "type": "string",
+          "enum": ["auto", "copilot", "github-models", "pattern-kb"],
+          "default": "auto",
+          "description": "AI backend to use: auto (try Copilot, then GitHub Models, then pattern KB), copilot, github-models, or pattern-kb."
+        },
+        "autodebug.moduleSplitter.minLinesForExtraction": {
+          "type": "number",
+          "default": 15,
+          "minimum": 5,
+          "maximum": 200,
+          "description": "Minimum lines a region must have before it is considered for extraction by the Module Splitter."
+        },
+        "autodebug.moduleSplitter.complexityThreshold": {
+          "type": "number",
+          "default": 10,
+          "minimum": 3,
+          "maximum": 50,
+          "description": "Cyclomatic complexity threshold above which a region is flagged for extraction."
+        },
+        "autodebug.moduleSplitter.enableTypeRouting": {
+          "type": "boolean",
+          "default": true,
+          "description": "When enabled, the Module Splitter auto-detects existing types.ts / interfaces.ts files and routes inline type declarations there instead of creating new files."
+        },
+        "autodebug.moduleSplitter.parseEngine": {
+          "type": "string",
+          "enum": ["auto", "typescript-ast", "bracket-depth"],
+          "default": "auto",
+          "description": "Parse engine for the Module Splitter. 'auto' uses the TypeScript Compiler API for .ts/.tsx/.js/.jsx files and falls back to bracket-depth for other languages."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run compile",
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "pretest": "npm run compile",
+    "lint": "eslint src --ext ts"
+  },
+  "devDependencies": {
+    "@types/vscode": "^1.85.0",
+    "@types/node": "^18.0.0",
+    "@typescript-eslint/eslint-plugin": "^6.0.0",
+    "@typescript-eslint/parser": "^6.0.0",
+    "eslint": "^8.0.0",
+    "typescript": "^5.3.0"
+  },
+  "dependencies": {
+    "typescript": "^5.3.0"
+  }
+}

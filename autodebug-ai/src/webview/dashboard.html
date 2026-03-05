@@ -1,0 +1,1752 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline';">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>AutoDebug AI</title>
+  <style>
+    /* ── Reset & Base ── */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: var(--vscode-font-family, 'Segoe UI', system-ui, sans-serif);
+      font-size: var(--vscode-font-size, 13px);
+      color: var(--vscode-sideBar-foreground, var(--vscode-foreground, #cccccc));
+      background: var(--vscode-sideBar-background, #1e1e1e);
+      line-height: 1.4;
+      overflow-x: hidden;
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+
+    /* ── Top accent bar ── */
+    .accent-bar {
+      height: 2px;
+      flex-shrink: 0;
+      background: linear-gradient(90deg,
+        var(--vscode-focusBorder, #007acc) 0%,
+        var(--vscode-terminal-ansiCyan, #29b8db) 60%,
+        transparent 100%);
+      opacity: 0.75;
+    }
+
+    a {
+      color: var(--vscode-textLink-foreground, #3794ff);
+      text-decoration: none;
+    }
+    a:hover { text-decoration: underline; }
+
+    button {
+      font-family: inherit;
+      font-size: var(--vscode-font-size, 13px);
+      cursor: pointer;
+      border: none;
+      outline: none;
+    }
+    button:focus-visible {
+      outline: 1px solid var(--vscode-focusBorder, #007acc);
+      outline-offset: -1px;
+    }
+
+    pre, code {
+      font-family: var(--vscode-editor-font-family, 'Consolas', 'Courier New', monospace);
+      font-size: calc(var(--vscode-font-size, 13px) - 1px);
+    }
+
+    ::-webkit-scrollbar { width: 6px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb {
+      background: var(--vscode-scrollbarSlider-background, rgba(100,100,100,0.4));
+      border-radius: 3px;
+    }
+    ::-webkit-scrollbar-thumb:hover {
+      background: var(--vscode-scrollbarSlider-hoverBackground, rgba(100,100,100,0.7));
+    }
+
+    /* ── Header ── */
+    .header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 10px 0 12px;
+      height: 38px;
+      flex-shrink: 0;
+      background: var(--vscode-sideBarSectionHeader-background, rgba(127,127,127,0.04));
+      border-bottom: 1px solid var(--vscode-panel-border, rgba(127,127,127,0.18));
+      position: sticky;
+      top: 0;
+      z-index: 20;
+    }
+
+    .header-left {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      overflow: hidden;
+    }
+
+    .header-icon {
+      color: var(--vscode-focusBorder, #007acc);
+      flex-shrink: 0;
+      display: flex;
+      align-items: center;
+    }
+
+    .header-title {
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.07em;
+      text-transform: uppercase;
+      color: var(--vscode-sideBarTitle-foreground, var(--vscode-foreground, #d0d0d0));
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .header-right {
+      display: flex;
+      align-items: center;
+      gap: 2px;
+      flex-shrink: 0;
+    }
+
+    /* ── AI Status chip ── */
+    .ai-chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      font-size: 10px;
+      font-weight: 600;
+      padding: 2px 7px;
+      border-radius: 10px;
+      background: var(--vscode-badge-background, rgba(127,127,127,0.2));
+      color: var(--vscode-badge-foreground, #aaa);
+      border: 1px solid transparent;
+      margin-right: 2px;
+      white-space: nowrap;
+      transition: background 0.2s, color 0.2s;
+      letter-spacing: 0.02em;
+    }
+    .ai-chip.copilot  { background: rgba(111,191,115,0.1); color: #6fbf73; border-color: rgba(111,191,115,0.25); }
+    .ai-chip.ghmodels { background: rgba(124,174,255,0.1); color: #7caeff; border-color: rgba(124,174,255,0.25); }
+    .ai-chip.offline  { background: rgba(127,127,127,0.1); color: var(--vscode-descriptionForeground, #888); border-color: rgba(127,127,127,0.15); }
+
+    /* ── Icon Button ── */
+    .icon-btn {
+      width: 24px;
+      height: 24px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: transparent;
+      color: var(--vscode-icon-foreground, var(--vscode-foreground, #c5c5c5));
+      border-radius: 5px;
+      border: 1px solid transparent;
+      transition: background 0.12s, color 0.12s;
+    }
+    .icon-btn:hover {
+      background: var(--vscode-toolbar-hoverBackground, rgba(90,93,94,0.35));
+      color: var(--vscode-foreground, #fff);
+    }
+    .icon-btn:active {
+      background: var(--vscode-toolbar-activeBackground, rgba(99,102,103,0.4));
+    }
+
+    /* ── Summary strip ── */
+    .summary-strip {
+      display: none;
+      align-items: center;
+      gap: 5px;
+      padding: 5px 12px;
+      background: var(--vscode-sideBarSectionHeader-background, rgba(127,127,127,0.03));
+      border-bottom: 1px solid var(--vscode-panel-border, rgba(127,127,127,0.1));
+      flex-shrink: 0;
+    }
+
+    .s-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 3px;
+      font-size: 10px;
+      font-weight: 600;
+      padding: 2px 7px;
+      border-radius: 10px;
+      border: 1px solid transparent;
+    }
+    .s-badge.err  { background: rgba(241,76,76,0.12); color: var(--vscode-editorError-foreground, #f88070); border-color: rgba(241,76,76,0.2); }
+    .s-badge.warn { background: rgba(204,167,0,0.12); color: var(--vscode-editorWarning-foreground, #cca700); border-color: rgba(204,167,0,0.2); }
+    .s-badge.ok   { background: rgba(76,175,80,0.1); color: #4caf50; border-color: rgba(76,175,80,0.2); }
+
+    /* ── Tabs ── */
+    .tabs {
+      display: flex;
+      background: var(--vscode-sideBar-background, #1e1e1e);
+      border-bottom: 1px solid var(--vscode-panel-border, rgba(127,127,127,0.18));
+      flex-shrink: 0;
+      padding: 0 4px;
+      gap: 1px;
+    }
+
+    .tab {
+      flex: 1;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 4px;
+      padding: 8px 2px 7px;
+      font-size: 11px;
+      font-weight: 500;
+      color: var(--vscode-tab-inactiveForeground, #888);
+      background: transparent;
+      border: none;
+      border-bottom: 2px solid transparent;
+      cursor: pointer;
+      white-space: nowrap;
+      transition: color 0.12s, border-color 0.12s;
+      min-width: 0;
+      letter-spacing: 0.01em;
+    }
+    .tab svg { flex-shrink: 0; opacity: 0.7; transition: opacity 0.12s; }
+    .tab span { overflow: hidden; text-overflow: ellipsis; }
+
+    .tab:hover:not(.active) {
+      color: var(--vscode-foreground, #ccc);
+    }
+    .tab:hover:not(.active) svg { opacity: 0.9; }
+
+    .tab.active {
+      color: var(--vscode-tab-activeForeground, #fff);
+      border-bottom-color: var(--vscode-focusBorder, #007acc);
+    }
+    .tab.active svg { opacity: 1; }
+
+    /* ── Panels ── */
+    .panels { flex: 1; overflow: hidden; position: relative; }
+
+    .panel {
+      display: none;
+      flex-direction: column;
+      height: 100%;
+      overflow-y: auto;
+      padding: 0;
+    }
+    .panel.active { display: flex; }
+
+    .panel-inner {
+      display: flex;
+      flex-direction: column;
+      gap: 0;
+      padding: 4px 0 8px;
+    }
+
+    /* ── Empty / Loading ── */
+    .state-placeholder {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 10px;
+      padding: 44px 20px;
+      color: var(--vscode-descriptionForeground, #6e6e6e);
+      text-align: center;
+    }
+    .state-placeholder svg {
+      opacity: 0.35;
+    }
+    .state-placeholder p {
+      font-size: 12px;
+      font-weight: 500;
+      line-height: 1.5;
+      color: var(--vscode-foreground, #ccc);
+      opacity: 0.7;
+    }
+    .state-placeholder .hint {
+      font-size: 11px;
+      color: var(--vscode-descriptionForeground, #666);
+      max-width: 200px;
+      line-height: 1.5;
+    }
+
+    .spinner {
+      width: 20px; height: 20px;
+      border: 2px solid var(--vscode-panel-border, #444);
+      border-top-color: var(--vscode-progressBar-background, #007acc);
+      border-radius: 50%;
+      animation: spin 0.6s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* ── Section label ── */
+    .section-label {
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: 0.07em;
+      text-transform: uppercase;
+      color: var(--vscode-descriptionForeground, #777);
+      padding: 10px 12px 5px;
+      display: flex;
+      align-items: center;
+      gap: 7px;
+    }
+    .section-label::after {
+      content: '';
+      flex: 1;
+      height: 1px;
+      background: var(--vscode-panel-border, rgba(127,127,127,0.1));
+      border-radius: 1px;
+    }
+
+    /* ── Error Row ── */
+    .err-row {
+      display: flex;
+      flex-direction: column;
+      padding: 8px 12px 8px 14px;
+      cursor: pointer;
+      border-left: 2px solid transparent;
+      border-bottom: 1px solid var(--vscode-panel-border, rgba(127,127,127,0.07));
+      transition: background 0.1s;
+      position: relative;
+    }
+    .err-row:last-child { border-bottom: none; }
+    .err-row:hover {
+      background: var(--vscode-list-hoverBackground, rgba(255,255,255,0.05));
+    }
+    .err-row.active-row {
+      background: var(--vscode-list-activeSelectionBackground, rgba(4,57,94,0.5));
+      border-left-color: var(--vscode-focusBorder, #007acc) !important;
+    }
+    .err-row.sev-error  { border-left-color: var(--vscode-editorError-foreground, #f14c4c); }
+    .err-row.sev-warn   { border-left-color: var(--vscode-editorWarning-foreground, #cca700); }
+    .err-row.sev-info   { border-left-color: var(--vscode-editorInfo-foreground, #3794ff); }
+
+    .err-top {
+      display: flex;
+      align-items: baseline;
+      gap: 6px;
+      min-width: 0;
+    }
+    .err-sev-icon {
+      flex-shrink: 0;
+      display: flex;
+      align-items: center;
+      margin-top: 1px;
+    }
+    .err-sev-icon.sev-error  { color: var(--vscode-editorError-foreground, #f14c4c); }
+    .err-sev-icon.sev-warn   { color: var(--vscode-editorWarning-foreground, #cca700); }
+    .err-sev-icon.sev-info   { color: var(--vscode-editorInfo-foreground, #3794ff); }
+
+    .err-type {
+      font-size: 11px;
+      font-weight: 600;
+      color: var(--vscode-foreground, #d4d4d4);
+      white-space: nowrap;
+      flex-shrink: 0;
+    }
+    .err-source {
+      font-size: 10px;
+      padding: 0 6px;
+      border-radius: 10px;
+      background: var(--vscode-badge-background, rgba(127,127,127,0.2));
+      color: var(--vscode-badge-foreground, #aaa);
+      white-space: nowrap;
+      flex-shrink: 0;
+      font-weight: 500;
+    }
+    .err-msg {
+      font-size: 12px;
+      color: var(--vscode-foreground, #cccccc);
+      margin: 4px 0 3px;
+      line-height: 1.45;
+      display: -webkit-box;
+      -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical;
+      overflow: hidden;
+    }
+    .err-loc {
+      display: flex;
+      align-items: center;
+      gap: 3px;
+      font-size: 10px;
+      color: var(--vscode-descriptionForeground, #777);
+      margin: 2px 0;
+    }
+    .err-loc a { color: inherit; }
+    .err-loc a:hover { color: var(--vscode-textLink-foreground, #3794ff); text-decoration: underline; }
+
+    .err-explain {
+      font-size: 11px;
+      color: var(--vscode-descriptionForeground, #999);
+      line-height: 1.5;
+      margin: 4px 0 3px;
+    }
+
+    .err-fix {
+      display: -webkit-box;
+      -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical;
+      overflow: hidden;
+      font-size: 11px;
+      color: var(--vscode-terminal-ansiGreen, #4ec9b0);
+      background: rgba(78,201,176,0.06);
+      border: 1px solid rgba(78,201,176,0.2);
+      border-left: 2px solid var(--vscode-terminal-ansiGreen, #4ec9b0);
+      border-radius: 3px;
+      padding: 5px 8px;
+      margin: 5px 0 3px;
+      line-height: 1.45;
+    }
+
+    .err-ai-src {
+      font-size: 10px;
+      color: var(--vscode-descriptionForeground, #555);
+      margin-top: 3px;
+    }
+
+    /* Confidence bar */
+    .conf-bar-wrap { margin-top: 6px; }
+    .conf-label {
+      font-size: 10px;
+      color: var(--vscode-descriptionForeground, #666);
+      margin-bottom: 3px;
+      font-weight: 500;
+    }
+    .conf-track {
+      height: 3px;
+      background: var(--vscode-panel-border, rgba(127,127,127,0.15));
+      border-radius: 3px;
+      overflow: hidden;
+    }
+    .conf-fill {
+      height: 100%;
+      border-radius: 3px;
+      transition: width 0.4s ease;
+    }
+
+    /* Row actions */
+    .err-actions {
+      display: flex;
+      gap: 4px;
+      margin-top: 8px;
+      flex-wrap: wrap;
+    }
+
+    .act-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      padding: 3px 9px;
+      font-size: 11px;
+      border-radius: 4px;
+      font-weight: 500;
+      transition: background 0.12s, opacity 0.12s;
+      letter-spacing: 0.01em;
+    }
+    .act-btn.primary {
+      background: var(--vscode-button-background, #0e639c);
+      color: var(--vscode-button-foreground, #fff);
+    }
+    .act-btn.primary:hover {
+      background: var(--vscode-button-hoverBackground, #1177bb);
+    }
+    .act-btn.secondary {
+      background: transparent;
+      color: var(--vscode-foreground, #ccc);
+      border: 1px solid var(--vscode-panel-border, rgba(127,127,127,0.3));
+    }
+    .act-btn.secondary:hover {
+      background: var(--vscode-list-hoverBackground, rgba(255,255,255,0.06));
+      border-color: var(--vscode-foreground, rgba(255,255,255,0.2));
+    }
+    .act-btn svg { flex-shrink: 0; }
+
+    /* ── Root Cause Panel ── */
+    .rc-block {
+      margin: 10px 12px 4px;
+      background: var(--vscode-sideBar-background, #1e1e1e);
+      border: 1px solid var(--vscode-panel-border, rgba(127,127,127,0.18));
+      border-radius: 6px;
+      overflow: hidden;
+    }
+    .rc-block-title {
+      display: flex;
+      align-items: center;
+      gap: 7px;
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.03em;
+      color: var(--vscode-foreground, #d4d4d4);
+      background: var(--vscode-sideBarSectionHeader-background, rgba(127,127,127,0.05));
+      border-bottom: 1px solid var(--vscode-panel-border, rgba(127,127,127,0.18));
+      padding: 9px 12px;
+    }
+    .rc-row {
+      padding: 8px 12px;
+      border-bottom: 1px solid var(--vscode-panel-border, rgba(127,127,127,0.08));
+      font-size: 11px;
+    }
+    .rc-row:last-child { border-bottom: none; }
+    .rc-key {
+      font-size: 10px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--vscode-descriptionForeground, #777);
+      margin-bottom: 4px;
+    }
+    .rc-val { color: var(--vscode-foreground, #ccc); line-height: 1.4; }
+    .rc-code {
+      font-family: var(--vscode-editor-font-family, 'Consolas', 'Courier New', monospace);
+      font-size: 10px;
+      background: var(--vscode-textCodeBlock-background, rgba(127,127,127,0.08));
+      color: var(--vscode-editor-foreground, #d4d4d4);
+      border: 1px solid var(--vscode-panel-border, rgba(127,127,127,0.15));
+      padding: 8px 10px;
+      border-radius: 4px;
+      margin-top: 6px;
+      overflow: auto;
+      line-height: 1.55;
+    }
+
+    /* ── Heatmap ── */
+    .heat-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 5px 12px;
+      cursor: pointer;
+      transition: background 0.08s;
+    }
+    .heat-row:hover {
+      background: var(--vscode-list-hoverBackground, rgba(255,255,255,0.04));
+    }
+    .heat-rank {
+      font-size: 10px;
+      color: var(--vscode-descriptionForeground, #666);
+      min-width: 14px;
+      text-align: right;
+      flex-shrink: 0;
+    }
+    .heat-name {
+      font-size: 11px;
+      color: var(--vscode-textLink-foreground, #3794ff);
+      flex: 1;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .heat-track {
+      width: 60px;
+      height: 3px;
+      background: var(--vscode-panel-border, #333);
+      border-radius: 2px;
+      overflow: hidden;
+      flex-shrink: 0;
+    }
+    .heat-fill { height: 100%; border-radius: 2px; transition: width 0.3s; }
+    .heat-counts {
+      font-size: 10px;
+      color: var(--vscode-descriptionForeground, #888);
+      min-width: 40px;
+      text-align: right;
+      flex-shrink: 0;
+    }
+    .heat-err { color: var(--vscode-editorError-foreground, #f14c4c); }
+    .heat-warn { color: var(--vscode-editorWarning-foreground, #cca700); }
+
+    /* ── Chat Panel ── */
+    .chat-wrap {
+      display: flex;
+      flex-direction: column;
+      height: 100%;
+    }
+
+    .chat-suggestions {
+      display: flex;
+      flex-direction: column;
+      gap: 3px;
+      padding: 8px 8px 0;
+      flex-shrink: 0;
+    }
+
+    .sug-btn {
+      display: flex;
+      align-items: center;
+      gap: 7px;
+      padding: 5px 9px;
+      font-size: 11px;
+      color: var(--vscode-foreground, #ccc);
+      background: transparent;
+      border: 1px solid var(--vscode-panel-border, rgba(127,127,127,0.2));
+      border-radius: 4px;
+      text-align: left;
+      transition: background 0.12s, border-color 0.12s;
+    }
+    .sug-btn:hover {
+      background: var(--vscode-list-hoverBackground, rgba(255,255,255,0.05));
+      border-color: var(--vscode-focusBorder, #007acc);
+    }
+    .sug-btn svg { flex-shrink: 0; color: var(--vscode-focusBorder, #007acc); opacity: 0.75; }
+
+    .chat-history {
+      flex: 1;
+      overflow-y: auto;
+      display: flex;
+      flex-direction: column;
+      gap: 1px;
+      padding: 6px 0;
+    }
+
+    .chat-msg {
+      display: flex;
+      gap: 8px;
+      padding: 6px 12px;
+      font-size: 12px;
+      line-height: 1.5;
+    }
+    .chat-msg:hover {
+      background: var(--vscode-list-hoverBackground, rgba(255,255,255,0.03));
+    }
+
+    .chat-avatar {
+      width: 18px;
+      height: 18px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+      margin-top: 1px;
+    }
+    .chat-avatar.user {
+      background: var(--vscode-button-background, #0e639c);
+      color: var(--vscode-button-foreground, #fff);
+    }
+    .chat-avatar.assistant {
+      background: var(--vscode-badge-background, #444);
+      color: var(--vscode-badge-foreground, #fff);
+    }
+
+    .chat-body { flex: 1; min-width: 0; }
+    .chat-who {
+      font-size: 10px;
+      font-weight: 700;
+      color: var(--vscode-descriptionForeground, #888);
+      margin-bottom: 3px;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+    .chat-text { color: var(--vscode-foreground, #ccc); }
+    .chat-text strong { color: var(--vscode-foreground, #ddd); font-weight: 600; }
+    .chat-text code {
+      background: var(--vscode-textCodeBlock-background, rgba(127,127,127,0.15));
+      padding: 1px 4px;
+      border-radius: 3px;
+      font-size: 10px;
+    }
+    .chat-text pre {
+      background: var(--vscode-textCodeBlock-background, rgba(127,127,127,0.1));
+      border: 1px solid var(--vscode-panel-border, #333);
+      padding: 8px 10px;
+      border-radius: 3px;
+      margin-top: 6px;
+      overflow-x: auto;
+      color: var(--vscode-editor-foreground, #d4d4d4);
+    }
+
+    .chat-input-area {
+      padding: 6px 8px 9px;
+      border-top: 1px solid var(--vscode-panel-border, rgba(127,127,127,0.18));
+      background: var(--vscode-sideBar-background, #1e1e1e);
+      flex-shrink: 0;
+    }
+    .chat-input-row {
+      display: flex;
+      gap: 5px;
+      align-items: flex-end;
+    }
+    .chat-input {
+      flex: 1;
+      background: var(--vscode-input-background, #3c3c3c);
+      border: 1px solid var(--vscode-input-border, transparent);
+      color: var(--vscode-input-foreground, #cccccc);
+      border-radius: 4px;
+      padding: 5px 8px;
+      font-size: 12px;
+      font-family: inherit;
+      outline: none;
+      resize: none;
+      min-height: 30px;
+      max-height: 80px;
+      line-height: 1.4;
+    }
+    .chat-input::placeholder { color: var(--vscode-input-placeholderForeground, #888); }
+    .chat-input:focus {
+      border-color: var(--vscode-focusBorder, #007acc);
+    }
+    .chat-send {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      width: 30px;
+      height: 30px;
+      background: var(--vscode-button-background, #0e639c);
+      color: var(--vscode-button-foreground, #fff);
+      border-radius: 5px;
+      flex-shrink: 0;
+      transition: background 0.12s;
+    }
+    .chat-send:hover {
+      background: var(--vscode-button-hoverBackground, #1177bb);
+    }
+
+    /* ── Split Module Panel ── */
+    .split-header {
+      margin: 10px 12px 6px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .split-title {
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--vscode-foreground, #d4d4d4);
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .split-metrics {
+      display: flex;
+      gap: 6px;
+      flex-wrap: wrap;
+      margin: 0 12px 8px;
+    }
+    .split-metric {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      flex: 1;
+      min-width: 56px;
+      padding: 7px 6px 6px;
+      background: var(--vscode-sideBarSectionHeader-background, rgba(127,127,127,0.06));
+      border: 1px solid var(--vscode-panel-border, rgba(127,127,127,0.14));
+      border-radius: 6px;
+    }
+    .split-metric-val {
+      font-size: 16px;
+      font-weight: 700;
+      line-height: 1.1;
+      color: var(--vscode-foreground, #d4d4d4);
+    }
+    .split-metric-lbl {
+      font-size: 9px;
+      font-weight: 600;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      color: var(--vscode-descriptionForeground, #777);
+      margin-top: 3px;
+    }
+    .split-metric.health-healthy .split-metric-val { color: var(--vscode-testing-iconPassed, #4caf50); }
+    .split-metric.health-critical .split-metric-val { color: var(--vscode-editorError-foreground, #f14c4c); }
+    .split-metric.health-moderate .split-metric-val { color: var(--vscode-editorWarning-foreground, #cca700); }
+
+    .split-recommendation {
+      margin: 0 12px 10px;
+      padding: 8px 10px;
+      background: rgba(55,148,255,0.07);
+      border: 1px solid rgba(55,148,255,0.18);
+      border-left: 3px solid var(--vscode-focusBorder, #007acc);
+      border-radius: 4px;
+      font-size: 11px;
+      color: var(--vscode-foreground, #ccc);
+      line-height: 1.5;
+    }
+
+    .split-file-row {
+      display: flex;
+      flex-direction: column;
+      padding: 7px 12px 7px 14px;
+      border-bottom: 1px solid var(--vscode-panel-border, rgba(127,127,127,0.07));
+      border-left: 2px solid var(--vscode-focusBorder, #007acc);
+    }
+    .split-file-row:last-child { border-bottom: none; }
+    .split-file-name {
+      font-size: 11px;
+      font-weight: 600;
+      color: var(--vscode-textLink-foreground, #3794ff);
+      font-family: var(--vscode-editor-font-family, monospace);
+    }
+    .split-file-meta {
+      font-size: 10px;
+      color: var(--vscode-descriptionForeground, #777);
+      margin-top: 3px;
+    }
+    .split-file-region {
+      font-size: 10px;
+      color: var(--vscode-foreground, #aaa);
+      margin-top: 2px;
+    }
+
+    .split-risk-row {
+      padding: 5px 12px;
+      font-size: 11px;
+      color: var(--vscode-editorWarning-foreground, #cca700);
+      border-bottom: 1px solid var(--vscode-panel-border, rgba(127,127,127,0.06));
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .split-risk-row:last-child { border-bottom: none; }
+
+    .split-smell-row {
+      padding: 5px 12px;
+      font-size: 11px;
+      color: var(--vscode-editorError-foreground, #f14c4c);
+      border-bottom: 1px solid var(--vscode-panel-border, rgba(127,127,127,0.06));
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .split-smell-row:last-child { border-bottom: none; }
+
+    .split-block {
+      margin: 0 12px 10px;
+      border: 1px solid var(--vscode-panel-border, rgba(127,127,127,0.18));
+      border-radius: 6px;
+      overflow: hidden;
+    }
+    .split-block-title {
+      display: flex;
+      align-items: center;
+      gap: 7px;
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+      color: var(--vscode-descriptionForeground, #888);
+      background: var(--vscode-sideBarSectionHeader-background, rgba(127,127,127,0.05));
+      border-bottom: 1px solid var(--vscode-panel-border, rgba(127,127,127,0.12));
+      padding: 7px 12px;
+    }
+    .split-block-badge {
+      margin-left: auto;
+      font-size: 10px;
+      font-weight: 700;
+      padding: 1px 6px;
+      border-radius: 9px;
+      background: var(--vscode-badge-background, rgba(127,127,127,0.2));
+      color: var(--vscode-badge-foreground, #aaa);
+    }
+
+    /* loading state for split */
+    .split-loading-wrap {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 10px;
+      padding: 44px 20px;
+    }
+    .split-loading-text {
+      font-size: 12px;
+      color: var(--vscode-descriptionForeground, #888);
+    }
+
+    /* ── Split mode buttons (empty state) ── */
+    .split-mode-btns { padding: 0 16px; }
+    .split-mode-btn {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      width: 100%;
+      padding: 9px 12px;
+      border-radius: 6px;
+      border: 1px solid var(--vscode-panel-border, rgba(127,127,127,0.25));
+      background: transparent;
+      color: var(--vscode-foreground, #ccc);
+      cursor: pointer;
+      text-align: left;
+      transition: background 0.12s, border-color 0.12s;
+    }
+    .split-mode-btn:hover { background: var(--vscode-list-hoverBackground, rgba(255,255,255,0.06)); border-color: var(--vscode-focusBorder, #007acc); }
+    .split-mode-icon { font-size: 16px; flex-shrink: 0; width: 22px; text-align: center; }
+    .split-mode-info { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+    .split-mode-label { font-size: 12px; font-weight: 600; }
+    .split-mode-desc  { font-size: 10px; color: var(--vscode-descriptionForeground, #888); }
+    .ast-btn   { border-color: rgba(78,201,176,0.3); }
+    .ast-btn:hover   { border-color: var(--vscode-terminal-ansiGreen, #4ec9b0); }
+    .ai-btn    { border-color: rgba(87,156,255,0.3); }
+    .ai-btn:hover    { border-color: var(--vscode-focusBorder, #007acc); }
+    .astai-btn { border-color: rgba(199,146,234,0.3); }
+    .astai-btn:hover { border-color: var(--vscode-terminal-ansiMagenta, #c792ea); }
+
+    /* ── Top bar in results ── */
+    .split-top-bar {
+      display: flex;
+      align-items: center;
+      padding: 6px 12px 4px;
+      gap: 6px;
+      border-bottom: 1px solid var(--vscode-panel-border, rgba(127,127,127,0.1));
+      flex-shrink: 0;
+    }
+    .split-rerun-btns { display: flex; gap: 3px; flex-shrink: 0; }
+    .split-rerun-btn {
+      display: flex; align-items: center; justify-content: center;
+      width: 22px; height: 22px; font-size: 11px;
+      background: transparent;
+      border: 1px solid var(--vscode-panel-border, rgba(127,127,127,0.25));
+      border-radius: 4px; cursor: pointer;
+      color: var(--vscode-foreground, #ccc);
+      transition: background 0.1s;
+    }
+    .split-rerun-btn:hover { background: var(--vscode-toolbar-hoverBackground, rgba(90,93,94,0.35)); }
+
+    /* ── Generated code cards ── */
+    .split-file-card {
+      border-bottom: 1px solid var(--vscode-panel-border, rgba(127,127,127,0.07));
+    }
+    .split-file-card:last-child { border-bottom: none; }
+    .split-file-card-header {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      padding: 7px 12px;
+      cursor: pointer;
+      border-left: 2px solid var(--vscode-focusBorder, #007acc);
+      transition: background 0.1s;
+    }
+    .split-file-card-header:hover { background: var(--vscode-list-hoverBackground, rgba(255,255,255,0.04)); }
+    .split-file-chevron { font-size: 9px; color: var(--vscode-descriptionForeground, #666); flex-shrink: 0; transition: transform 0.15s; }
+    .split-file-chevron.open { transform: rotate(90deg); }
+    .split-file-card-name {
+      font-size: 11px; font-weight: 600;
+      color: var(--vscode-textLink-foreground, #3794ff);
+      font-family: var(--vscode-editor-font-family, monospace);
+      flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    }
+    .split-file-card-meta {
+      font-size: 10px; color: var(--vscode-descriptionForeground, #777); flex-shrink: 0;
+    }
+    .split-file-card-body {
+      display: none;
+      padding: 0 0 8px 0;
+    }
+    .split-file-card-body.open { display: block; }
+    .split-file-region-tag {
+      font-size: 10px;
+      color: var(--vscode-descriptionForeground, #888);
+      padding: 2px 12px 4px;
+    }
+    .split-code-block {
+      font-family: var(--vscode-editor-font-family, 'Consolas', 'Courier New', monospace);
+      font-size: 10px;
+      background: var(--vscode-textCodeBlock-background, rgba(0,0,0,0.25));
+      color: var(--vscode-editor-foreground, #d4d4d4);
+      border-top: 1px solid var(--vscode-panel-border, rgba(127,127,127,0.12));
+      border-bottom: 1px solid var(--vscode-panel-border, rgba(127,127,127,0.12));
+      padding: 10px 12px;
+      overflow-x: auto;
+      max-height: 260px;
+      overflow-y: auto;
+      white-space: pre;
+      line-height: 1.55;
+    }
+    .split-link-row {
+      font-size: 10px; color: var(--vscode-descriptionForeground, #777);
+      padding: 4px 12px 0;
+      display: flex; gap: 6px; flex-wrap: wrap;
+    }
+    .split-link-tag {
+      padding: 1px 6px; border-radius: 8px;
+      background: var(--vscode-badge-background, rgba(127,127,127,0.15));
+      color: var(--vscode-badge-foreground, #aaa);
+      font-size: 9px; font-weight: 600;
+    }
+
+    /* ── Footer Create button ── */
+    .split-footer {
+      border-top: 1px solid var(--vscode-panel-border, rgba(127,127,127,0.18));
+      padding: 8px 10px;
+      flex-shrink: 0;
+      background: var(--vscode-sideBar-background, #1e1e1e);
+    }
+    .split-create-btn {
+      display: flex; align-items: center; justify-content: center;
+      gap: 6px; width: 100%;
+      padding: 8px 12px;
+      background: var(--vscode-button-background, #0e639c);
+      color: var(--vscode-button-foreground, #fff);
+      border: none; border-radius: 5px;
+      font-size: 12px; font-weight: 600;
+      cursor: pointer; transition: background 0.12s;
+    }
+    .split-create-btn:hover { background: var(--vscode-button-hoverBackground, #1177bb); }
+  </style>
+</head>
+<body>
+
+<!-- ── Accent bar ── -->
+<div class="accent-bar"></div>
+
+<!-- ── Header ── -->
+<div class="header">
+  <div class="header-left">
+    <span class="header-icon" id="headerIcon"></span>
+    <span class="header-title">AutoDebug AI</span>
+  </div>
+  <div class="header-right">
+    <span class="ai-chip offline" id="aiChip" title="AI backend status">
+      <span id="aiChipDot"></span>
+      <span id="aiChipText">…</span>
+    </span>
+    <button class="icon-btn" id="btnScan" onclick="analyzeWorkspace()" title="Scan Workspace"></button>
+    <button class="icon-btn" id="btnClear" onclick="clearErrors()" title="Clear Errors"></button>
+  </div>
+</div>
+
+<!-- ── Summary strip ── -->
+<div class="summary-strip" id="summaryStrip"></div>
+
+<!-- ── Tabs ── -->
+<div class="tabs" id="tabBar">
+  <button class="tab active" onclick="switchTab('errors')" id="tab-errors" title="Errors & Warnings">
+    <span id="tabIconErrors"></span><span>Errors</span>
+  </button>
+  <button class="tab" onclick="switchTab('rootcause')" id="tab-rootcause" title="Root Cause Analysis">
+    <span id="tabIconRootcause"></span><span>Root Cause</span>
+  </button>
+  <button class="tab" onclick="switchTab('heatmap')" id="tab-heatmap" title="Error Heatmap">
+    <span id="tabIconHeatmap"></span><span>Heatmap</span>
+  </button>
+  <button class="tab" onclick="switchTab('chat')" id="tab-chat" title="AI Debug Assistant">
+    <span id="tabIconChat"></span><span>Assistant</span>
+  </button>
+  <button class="tab" onclick="switchTab('split')" id="tab-split" title="Module Splitter Results">
+    <span id="tabIconSplit"></span><span>Split</span>
+  </button>
+</div>
+
+<!-- ── Panels ── -->
+<div class="panels">
+
+  <!-- Errors -->
+  <div class="panel active" id="panel-errors">
+    <div class="state-placeholder" id="errorsLoading" style="display:none">
+      <div class="spinner"></div>
+      <p>Analyzing diagnostics…</p>
+    </div>
+    <div class="state-placeholder" id="errorsEmpty">
+      <span id="emptyCheckIcon"></span>
+      <p>No errors detected.</p>
+      <span class="hint">Open a file with errors or run your build.</span>
+      <button class="act-btn secondary" onclick="analyzeWorkspace()" style="margin-top:6px" id="btnScanEmpty">
+        <span id="btnScanEmptyIcon"></span>Scan Workspace
+      </button>
+    </div>
+    <div class="panel-inner" id="errorsList" style="display:none"></div>
+  </div>
+
+  <!-- Root Cause -->
+  <div class="panel" id="panel-rootcause">
+    <div class="state-placeholder" id="rcEmpty">
+      <span id="emptySearchIcon"></span>
+      <p>Root Cause Analysis</p>
+      <span class="hint">Select an error and click <strong>Root Cause</strong>.</span>
+    </div>
+    <div id="rcContent" style="display:none"></div>
+  </div>
+
+  <!-- Heatmap -->
+  <div class="panel" id="panel-heatmap">
+    <div class="state-placeholder" id="heatEmpty">
+      <span id="emptyBarIcon"></span>
+      <p>Error Heatmap</p>
+      <span class="hint">Files with the most errors will appear here as diagnostics accumulate.</span>
+    </div>
+    <div id="heatList" style="display:none;flex-direction:column"></div>
+  </div>
+
+  <!-- Chat -->
+  <div class="panel" id="panel-chat">
+    <div class="chat-wrap">
+      <div class="chat-suggestions" id="suggestions"></div>
+      <div class="chat-history" id="chatHistory">
+        <div class="state-placeholder" id="chatEmpty">
+          <span id="emptyChatIcon"></span>
+          <p>AI Debug Assistant</p>
+          <span class="hint">Ask anything about your errors. Select an error first for context.</span>
+        </div>
+      </div>
+      <div class="chat-input-area">
+        <div class="chat-input-row">
+          <textarea class="chat-input" id="chatInput" placeholder="Ask about an error…" rows="1"
+            onkeydown="handleChatKey(event)" oninput="autoResize(this)"></textarea>
+          <button class="chat-send" onclick="sendChat()" id="btnSend" title="Send (Enter)"></button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Split Module -->
+  <div class="panel" id="panel-split">
+    <!-- Loading state -->
+    <div class="split-loading-wrap" id="splitLoading" style="display:none">
+      <div class="spinner"></div>
+      <span class="split-loading-text" id="splitLoadingText">Analysing module structure…</span>
+    </div>
+    <!-- Empty state with mode buttons -->
+    <div class="state-placeholder" id="splitEmpty">
+      <span id="emptySplitIcon"></span>
+      <p>Module Splitter</p>
+      <span class="hint">Open a source file and choose a split mode below.</span>
+      <div class="split-mode-btns" style="margin-top:12px;display:flex;flex-direction:column;gap:6px;width:100%">
+        <button class="split-mode-btn ast-btn"   onclick="triggerSplit('ast')"   title="Fast AST structural analysis">
+          <span class="split-mode-icon">⚙</span>
+          <div class="split-mode-info">
+            <span class="split-mode-label">AST Only</span>
+            <span class="split-mode-desc">Fast structural analysis</span>
+          </div>
+        </button>
+        <button class="split-mode-btn ai-btn"    onclick="triggerSplit('ai')"    title="AI writes full split code">
+          <span class="split-mode-icon">✦</span>
+          <div class="split-mode-info">
+            <span class="split-mode-label">AI Only</span>
+            <span class="split-mode-desc">AI-driven split with full code</span>
+          </div>
+        </button>
+        <button class="split-mode-btn astai-btn" onclick="triggerSplit('ast+ai')" title="AST analysis + AI code generation">
+          <span class="split-mode-icon">⚙✦</span>
+          <div class="split-mode-info">
+            <span class="split-mode-label">AST + AI</span>
+            <span class="split-mode-desc">Best of both — recommended</span>
+          </div>
+        </button>
+      </div>
+    </div>
+    <!-- Results -->
+    <div id="splitContent" style="display:none;flex-direction:column;height:100%">
+      <!-- Header + mode buttons bar -->
+      <div class="split-top-bar">
+        <div class="split-header" style="flex:1;min-width:0">
+          <span id="splitFileIcon"></span>
+          <span class="split-title" id="splitFileName">—</span>
+        </div>
+        <!-- Re-run mode buttons (compact) -->
+        <div class="split-rerun-btns">
+          <button class="split-rerun-btn" onclick="triggerSplit('ast')"    title="Re-run AST Only">⚙</button>
+          <button class="split-rerun-btn" onclick="triggerSplit('ai')"     title="Re-run AI Only">✦</button>
+          <button class="split-rerun-btn" onclick="triggerSplit('ast+ai')" title="Re-run AST + AI">⚙✦</button>
+        </div>
+      </div>
+      <!-- Metrics -->
+      <div class="split-metrics" id="splitMetrics"></div>
+      <div class="split-recommendation" id="splitRecommendation" style="display:none"></div>
+      <!-- Scrollable results area -->
+      <div style="flex:1;overflow-y:auto">
+        <!-- Proposed file cards with generated code -->
+        <div class="split-block" id="splitFilesBlock" style="display:none">
+          <div class="split-block-title">
+            <span id="splitFilesIcon"></span>
+            Proposed Extractions
+            <span class="split-block-badge" id="splitFilesCount">0</span>
+          </div>
+          <div id="splitFilesList"></div>
+        </div>
+        <!-- Circular risks -->
+        <div class="split-block" id="splitRisksBlock" style="display:none">
+          <div class="split-block-title">
+            <span id="splitRisksIcon"></span>
+            Circular Dependency Risks
+            <span class="split-block-badge" id="splitRisksCount">0</span>
+          </div>
+          <div id="splitRisksList"></div>
+        </div>
+        <!-- Code smells -->
+        <div class="split-block" id="splitSmellsBlock" style="display:none">
+          <div class="split-block-title">
+            <span id="splitSmellsIcon"></span>
+            Critical Code Smells
+            <span class="split-block-badge" id="splitSmellsCount">0</span>
+          </div>
+          <div id="splitSmellsList"></div>
+        </div>
+      </div>
+      <!-- Create Files footer -->
+      <div class="split-footer" id="splitFooter" style="display:none">
+        <button class="split-create-btn" onclick="createSplitFiles()">
+          <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="12" y1="18" x2="12" y2="12"/><line x1="9" y1="15" x2="15" y2="15"/></svg>
+          Create Files in Workspace
+        </button>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<script>
+  // ── VS Code API & shared state ──────────────────────────────────────────────
+  const vscode = acquireVsCodeApi();
+
+  const state = {
+    errors: [],
+    heatmap: [],
+    chat: [],
+    splitPlan: null,
+    selectedErrorId: null,
+  };
+
+    // ── SVG Icon library — more icons for split panel
+    const I_split = {
+      layers: `<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/></svg>`,
+      layersLg: `<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/></svg>`,
+      alertTriangle: `<svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>`,
+      fileOut: `<svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="9" y1="15" x2="15" y2="15"/></svg>`,
+    };
+
+  // ──────────────────────────────────────────────
+  // SVG Icon library — defined once, reused everywhere
+  // ──────────────────────────────────────────────
+  const I = {
+    // Bug (extension identity icon)
+    bug: `<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 2l1.5 1.5"/><path d="M14.5 3.5L16 2"/><path d="M9 9h6"/><path d="M9 12h6"/><path d="M9 15h6"/><path d="M4 12H2"/><path d="M22 12h-2"/><path d="M4 6H2"/><path d="M22 6h-2"/><path d="M4 18H2"/><path d="M22 18h-2"/><path d="M17.5 5.5A2.121 2.121 0 0 0 16 5H8a2 2 0 0 0-2 2v11a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2V7a2.121 2.121 0 0 0-.5-1.5z"/></svg>`,
+    // Error/X circle
+    errorCircle: `<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>`,
+    errorCircleSm: `<svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>`,
+    // Warning triangle
+    warning: `<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>`,
+    warningSm: `<svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>`,
+    // Info circle
+    info: `<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>`,
+    // Check circle (clean state)
+    checkCircle: `<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>`,
+    // Search
+    search: `<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>`,
+    searchLg: `<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>`,
+    // Bar chart
+    barChart: `<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>`,
+    barChartLg: `<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>`,
+    // Chat / message
+    chat: `<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>`,
+    chatLg: `<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>`,
+    // Trash / clear
+    trash: `<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4h6v2"/></svg>`,
+    // Scan / search-plus
+    scan: `<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/><path d="M11 8v6M8 11h6"/></svg>`,
+    // File
+    file: `<svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>`,
+    // Lightbulb / fix
+    lightbulb: `<svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="2" x2="12" y2="3"/><path d="M4.22 4.22l.71.71M1 12h1M20 12h1M4.93 19.07l.71-.71M19.07 19.07l-.71-.71M18 12a6 6 0 1 0-12 0c0 2.22 1.21 4.16 3 5.2V19a2 2 0 0 0 2 2h2a2 2 0 0 0 2-2v-1.8c1.79-1.04 3-2.98 3-5.2z"/></svg>`,
+    // Arrow right (open file)
+    arrowRight: `<svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>`,
+    // Crosshair (root cause)
+    crosshair: `<svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="22" y1="12" x2="18" y2="12"/><line x1="6" y1="12" x2="2" y2="12"/><line x1="12" y1="6" x2="12" y2="2"/><line x1="12" y1="22" x2="12" y2="18"/></svg>`,
+    crosshairLg: `<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="22" y1="12" x2="18" y2="12"/><line x1="6" y1="12" x2="2" y2="12"/><line x1="12" y1="6" x2="12" y2="2"/><line x1="12" y1="22" x2="12" y2="18"/></svg>`,
+    // Message square (ask AI)
+    msgSquare: `<svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>`,
+    // Send
+    send: `<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>`,
+    // Copilot dot
+    dot: (color) => `<svg width="6" height="6" viewBox="0 0 6 6"><circle cx="3" cy="3" r="3" fill="${color}"/></svg>`,
+    // User
+    user: `<svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>`,
+    // Sparkles (AI)
+    sparkle: `<svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v1m0 16v1M4.22 4.22l.7.7m12.72 12.72.7.7M3 12H2m20 0h-1M4.22 19.78l.7-.7m12.72-12.72.7-.7M9 12a3 3 0 1 0 6 0 3 3 0 0 0-6 0"/></svg>`,
+  };
+
+  // Inject icons into DOM elements
+  function initIcons() {
+    document.getElementById('headerIcon').innerHTML = I.bug;
+    document.getElementById('btnScan').innerHTML = I.scan;
+    document.getElementById('btnClear').innerHTML = I.trash;
+    document.getElementById('tabIconErrors').innerHTML = I.errorCircle;
+    document.getElementById('tabIconRootcause').innerHTML = I.crosshair;
+    document.getElementById('tabIconHeatmap').innerHTML = I.barChart;
+    document.getElementById('tabIconChat').innerHTML = I.chat;
+    document.getElementById('tabIconSplit').innerHTML = I_split.layers;
+    document.getElementById('emptyCheckIcon').innerHTML = I.checkCircle;
+    document.getElementById('emptySearchIcon').innerHTML = I.crosshairLg;
+    document.getElementById('emptyBarIcon').innerHTML = I.barChartLg;
+    document.getElementById('emptyChatIcon').innerHTML = I.chatLg;
+    document.getElementById('emptySplitIcon').innerHTML = I_split.layersLg;
+    document.getElementById('splitFileIcon').innerHTML = I.file;
+    document.getElementById('splitFilesIcon').innerHTML = I_split.fileOut;
+    document.getElementById('splitRisksIcon').innerHTML = I_split.alertTriangle;
+    document.getElementById('splitSmellsIcon').innerHTML = I_split.alertTriangle;
+    document.getElementById('btnScanEmptyIcon').innerHTML = I.scan + ' ';
+    document.getElementById('btnSend').innerHTML = I.send;
+    // AI chip dot default
+    document.getElementById('aiChipDot').innerHTML = I.dot('#888');
+    document.getElementById('aiChipText').textContent = '…';
+  }
+
+  // ── Tab switching ──
+  function switchTab(name) {
+    document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+    document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
+    document.getElementById('tab-' + name).classList.add('active');
+    document.getElementById('panel-' + name).classList.add('active');
+  }
+
+  // ── Messages from extension ──
+  window.addEventListener('message', e => {
+    const msg = e.data;
+    if      (msg.type === 'updateErrors')  { state.errors = msg.errors; renderErrors(); renderSummary(); }
+    else if (msg.type === 'updateHeatmap') { state.heatmap = msg.entries; renderHeatmap(); }
+    else if (msg.type === 'updateChat')    { state.chat = msg.history; renderChat(); }
+    else if (msg.type === 'loading')       { showLoading(msg.message); }
+    else if (msg.type === 'aiStatus')      { setAiChip(msg.source); }
+    else if (msg.type === 'splitLoading')  { showSplitLoading(msg.message); }
+    else if (msg.type === 'splitPlan')     { state.splitPlan = msg.data; renderSplitPlan(); }
+    else if (msg.type === 'splitError')    { showSplitError(msg.message); }
+    else if (msg.type === 'error')         { /* silent */ }
+  });
+
+  function setAiChip(source) {
+    const chip = document.getElementById('aiChip');
+    const dot  = document.getElementById('aiChipDot');
+    const txt  = document.getElementById('aiChipText');
+    chip.className = 'ai-chip';
+    if (source === 'copilot') {
+      chip.classList.add('copilot');
+      dot.innerHTML = I.dot('#4ec9b0');
+      txt.textContent = 'Copilot';
+    } else if (source === 'github-models') {
+      chip.classList.add('ghmodels');
+      dot.innerHTML = I.dot('#7caeff');
+      txt.textContent = 'GitHub AI';
+    } else {
+      chip.classList.add('offline');
+      dot.innerHTML = I.dot('#888');
+      txt.textContent = 'Pattern KB';
+    }
+  }
+
+  // ── Summary strip ──
+  function renderSummary() {
+    const strip = document.getElementById('summaryStrip');
+    if (!state.errors.length) { strip.style.display = 'none'; return; }
+    const errs  = state.errors.filter(e => e.severity === 0).length;
+    const warns = state.errors.filter(e => e.severity === 1).length;
+    strip.style.display = 'flex';
+    let html = '';
+    if (errs  > 0) html += `<span class="s-badge err">${I.errorCircleSm} ${errs} error${errs!==1?'s':''}</span>`;
+    if (warns > 0) html += `<span class="s-badge warn">${I.warningSm} ${warns} warning${warns!==1?'s':''}</span>`;
+    if (errs === 0 && warns === 0) html = `<span class="s-badge ok">${I.checkCircle} All clear</span>`;
+    strip.innerHTML = html;
+  }
+
+  // ── Errors ──
+  function renderErrors() {
+    const list    = document.getElementById('errorsList');
+    const empty   = document.getElementById('errorsEmpty');
+    const loading = document.getElementById('errorsLoading');
+    loading.style.display = 'none';
+
+    if (!state.errors.length) {
+      empty.style.display = 'flex';
+      list.style.display  = 'none';
+      return;
+    }
+    empty.style.display = 'none';
+    list.style.display  = 'flex';
+
+    // Group by type
+    const groups = {};
+    state.errors.forEach(e => {
+      if (!groups[e.type]) groups[e.type] = [];
+      groups[e.type].push(e);
+    });
+
+    let html = '';
+    const keys = Object.keys(groups);
+    for (const type of keys) {
+      if (keys.length > 1) {
+        html += `<div class="section-label">${escH(type)} &nbsp;<span style="font-weight:400;opacity:.6">(${groups[type].length})</span></div>`;
+      }
+      for (const e of groups[type]) { html += buildErrRow(e); }
+    }
+    list.innerHTML = html;
+  }
+
+  function sevIcon(sev) {
+    if (sev === 0) return `<span class="err-sev-icon sev-error">${I.errorCircleSm}</span>`;
+    if (sev === 1) return `<span class="err-sev-icon sev-warn">${I.warningSm}</span>`;
+    return `<span class="err-sev-icon" style="color:var(--vscode-editorInfo-foreground,#3794ff)">${I.info}</span>`;
+  }
+
+  function confColor(pct) {
+    return pct > 75 ? 'var(--vscode-testing-iconPassed,#4caf50)'
+         : pct > 40 ? 'var(--vscode-editorWarning-foreground,#cca700)'
+                    : 'var(--vscode-editorError-foreground,#f14c4c)';
+  }
+
+  function buildErrRow(e) {
+    const sevCls  = e.severity === 0 ? 'sev-error' : e.severity === 1 ? 'sev-warn' : 'sev-info';
+    const confPct = Math.round((e.summary?.confidence ?? 0) * 100);
+    const active  = state.selectedErrorId === e.id ? ' active-row' : '';
+    const shortFile = (e.file||'').split('/').pop() || e.file;
+    return `<div class="err-row ${sevCls}${active}" onclick="selectError('${e.id}')">
+      <div class="err-top">
+        ${sevIcon(e.severity)}
+        <span class="err-type">${escH(e.type)}</span>
+        <span class="err-source">${escH(e.source)}</span>
+      </div>
+      <div class="err-msg">${escH(e.message)}</div>
+      <div class="err-loc">
+        ${I.file}
+        <a href="#" onclick="event.preventDefault();event.stopPropagation();openFile('${escH(e.file)}',${e.line})" title="${escH(e.file)}">${escH(shortFile)}:${e.line}</a>
+      </div>
+      ${e.summary?.explanation ? `<div class="err-explain">${escH(e.summary.explanation)}</div>` : ''}
+      ${e.summary?.suggestedFix ? `<div class="err-fix">${I.lightbulb} ${escH(e.summary.suggestedFix)}</div>` : ''}
+      ${e.summary?.aiSource ? `<div class="err-ai-src">via ${escH(e.summary.aiSource)}</div>` : ''}
+      <div class="err-actions">
+        <button class="act-btn primary" onclick="event.stopPropagation();openFile('${escH(e.file)}',${e.line})">${I.arrowRight} Open</button>
+        <button class="act-btn secondary" onclick="event.stopPropagation();traceRootCause('${e.id}')">${I.crosshair} Root Cause</button>
+        <button class="act-btn secondary" onclick="event.stopPropagation();askAboutError('${e.id}')">${I.msgSquare} Ask AI</button>
+      </div>
+      ${confPct > 0 ? `<div class="conf-bar-wrap">
+        <div class="conf-label">Confidence: ${confPct}%</div>
+        <div class="conf-track"><div class="conf-fill" style="width:${confPct}%;background:${confColor(confPct)}"></div></div>
+      </div>` : ''}
+    </div>`;
+  }
+
+  function selectError(id) {
+    state.selectedErrorId = id;
+    renderErrors();
+  }
+
+  // ── Root Cause ──
+  function traceRootCause(errorId) {
+    const e = state.errors.find(x => x.id === errorId);
+    if (!e) return;
+    switchTab('rootcause');
+    document.getElementById('rcEmpty').style.display = 'none';
+    const rcContent = document.getElementById('rcContent');
+    rcContent.style.display = 'block';
+    const shortFile = (e.file||'').split('/').pop() || e.file;
+    rcContent.innerHTML = `<div class="rc-block" style="margin:10px 12px">
+      <div class="rc-block-title">
+        ${I.crosshair}
+        Root Cause — ${escH(e.type)}
+      </div>
+      <div class="rc-row">
+        <div class="rc-key">Error</div>
+        <div class="rc-val">${escH(e.message)}</div>
+      </div>
+      <div class="rc-row">
+        <div class="rc-key">Location</div>
+        <div class="rc-val"><a href="#" onclick="openFile('${escH(e.file)}',${e.line})">${escH(shortFile)}:${e.line}</a></div>
+      </div>
+      <div class="rc-row">
+        <div class="rc-key">Possible Cause</div>
+        <div class="rc-val">${escH(e.summary?.possibleCause || 'Trace variable assignments and function calls leading to this error.')}</div>
+      </div>
+      ${e.summary?.codeExample ? `<div class="rc-row">
+        <div class="rc-key">Fix Example</div>
+        <pre class="rc-code">${escH(e.summary.codeExample)}</pre>
+      </div>` : ''}
+      ${(e.summary?.documentationLinks||[]).length ? `<div class="rc-row">
+        <div class="rc-key">References</div>
+        <div class="rc-val">${(e.summary.documentationLinks).map(l => `<div style="margin:2px 0"><a href="${escH(l)}">${escH(l.replace(/https?:\/\/(www\.)?/,''))}</a></div>`).join('')}</div>
+      </div>` : ''}
+    </div>`;
+  }
+
+  // ── Heatmap ──
+  function renderHeatmap() {
+    const empty = document.getElementById('heatEmpty');
+    const list  = document.getElementById('heatList');
+    if (!state.heatmap.length) {
+      empty.style.display = 'flex'; list.style.display = 'none'; return;
+    }
+    empty.style.display = 'none'; list.style.display = 'flex';
+    const max = state.heatmap[0]?.totalCount ?? 1;
+    list.innerHTML = `<div class="section-label">Top error files</div>` + state.heatmap.map((h, i) => {
+      const pct   = Math.round((h.totalCount / max) * 100);
+      const shade = h.errorCount > 0
+        ? `hsl(${Math.max(0, 120 - h.errorCount * 15)}, 60%, 42%)`
+        : 'var(--vscode-editorWarning-foreground, #cca700)';
+      const shortFile = (h.relativeFile||'').split('/').pop() || h.relativeFile;
+      return `<div class="heat-row" onclick="openFile('${escH(h.file)}',1)">
+        <span class="heat-rank">${i+1}</span>
+        <span class="heat-name" title="${escH(h.file)}">${escH(shortFile)}</span>
+        <div class="heat-track"><div class="heat-fill" style="width:${pct}%;background:${shade}"></div></div>
+        <span class="heat-counts">
+          ${h.errorCount  ? `<span class="heat-err">${h.errorCount}e</span>` : ''}
+          ${h.warningCount ? `<span class="heat-warn"> ${h.warningCount}w</span>` : ''}
+        </span>
+      </div>`;
+    }).join('');
+  }
+
+  // ── Chat ──
+  function renderChat() {
+    const history   = document.getElementById('chatHistory');
+    const chatEmpty = document.getElementById('chatEmpty');
+    if (!state.chat.length) {
+      chatEmpty.style.display = 'flex'; return;
+    }
+    chatEmpty.style.display = 'none';
+    history.innerHTML = state.chat.map(m => {
+      const isUser = m.role === 'user';
+      const avatar = isUser
+        ? `<div class="chat-avatar user">${I.user}</div>`
+        : `<div class="chat-avatar assistant">${I.sparkle}</div>`;
+      const who   = isUser ? 'You' : 'AutoDebug AI';
+      let   body  = `<div class="chat-text">${formatChatContent(m.content)}</div>`;
+      const snips = (m.codeSnippets||[]).filter(Boolean);
+      if (snips.length) body += snips.map(s => `<pre class="chat-text" style="margin-top:6px">${escH(s)}</pre>`).join('');
+      const links = (m.relatedLinks||[]).filter(Boolean);
+      if (links.length) body += `<div style="font-size:10px;margin-top:4px;opacity:.7">${links.map(l=>`<a href="${escH(l)}">${escH(l.replace(/https?:\/\/(www\.)?/,''))}</a>`).join(' · ')}</div>`;
+      return `<div class="chat-msg">
+        ${avatar}
+        <div class="chat-body">
+          <div class="chat-who">${who}</div>
+          ${body}
+        </div>
+      </div>`;
+    }).join('');
+    history.scrollTop = history.scrollHeight;
+  }
+
+  function formatChatContent(text) {
+    return escH(text)
+      .replace(/\*\*([^*\n]+)\*\*/g, '<strong>$1</strong>')
+      .replace(/`([^`\n]+)`/g, '<code>$1</code>')
+      .replace(/\n/g, '<br>');
+  }
+
+  function sendChat() {
+    const input = document.getElementById('chatInput');
+    const q = input.value.trim();
+    if (!q) return;
+    input.value = '';
+    input.style.height = '';
+    state.chat.push({ role: 'user', content: q, timestamp: Date.now() });
+    document.getElementById('chatEmpty').style.display = 'none';
+    renderChat();
+    vscode.postMessage({ type: 'askQuestion', question: q });
+  }
+
+  function askAboutError(errorId) {
+    const e = state.errors.find(x => x.id === errorId);
+    if (!e) return;
+    vscode.postMessage({ type: 'selectError', errorId });
+    document.getElementById('chatInput').value = `Why is this ${e.type} happening in ${(e.file||'').split('/').pop()}?`;
+    switchTab('chat');
+    renderSuggestions(e);
+  }
+
+  function renderSuggestions(error) {
+    const el = document.getElementById('suggestions');
+    if (!error) { el.innerHTML = ''; return; }
+    const qs = [
+      [`Why is this ${error.type} happening?`, I.search],
+      [`How do I fix the error in ${(error.file||'').split('/').pop()}?`, I.lightbulb],
+      ['What is the root cause?', I.crosshair],
+    ];
+    el.innerHTML = qs.map(([q, icon]) =>
+      `<button class="sug-btn" onclick="quickAsk(${JSON.stringify(q)})">${icon} ${escH(q)}</button>`
+    ).join('');
+  }
+
+  function quickAsk(q) {
+    document.getElementById('chatInput').value = q;
+    sendChat();
+  }
+
+  function handleChatKey(e) {
+    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendChat(); }
+  }
+
+  function autoResize(el) {
+    el.style.height = 'auto';
+    el.style.height = Math.min(el.scrollHeight, 80) + 'px';
+  }
+
+  // ── Actions ──
+  function openFile(file, line) {
+    vscode.postMessage({ type: 'openFile', file, line });
+  }
+
+  function clearErrors() {
+    vscode.postMessage({ type: 'clearErrors' });
+    state.errors = [];
+    renderErrors();
+    renderSummary();
+  }
+
+  function analyzeWorkspace() {
+    showLoading('Scanning workspace…');
+    vscode.postMessage({ type: 'analyzeWorkspace' });
+  }
+
+  function showLoading(msg) {
+    document.getElementById('errorsLoading').style.display = 'flex';
+    document.getElementById('errorsEmpty').style.display   = 'none';
+    document.getElementById('errorsList').style.display    = 'none';
+    if (!document.getElementById('panel-errors').classList.contains('active')) switchTab('errors');
+  }
+
+  // ── Utils ──
+  function escH(s) {
+    return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  }
+
+  // ── Split Module ──
+  function triggerSplit(mode) {
+    vscode.postMessage({ type: 'splitWithMode', mode });
+  }
+
+  function createSplitFiles() {
+    vscode.postMessage({ type: 'createSplitFiles' });
+  }
+
+  function showSplitLoading(msg) {
+    switchTab('split');
+    document.getElementById('splitLoading').style.display = 'flex';
+    document.getElementById('splitLoadingText').textContent = msg || 'Analysing module structure\u2026';
+    document.getElementById('splitEmpty').style.display   = 'none';
+    document.getElementById('splitContent').style.display = 'none';
+    const errEl = document.getElementById('splitError');
+    if (errEl) { errEl.style.display = 'none'; }
+  }
+
+  function showSplitError(msg) {
+    switchTab('split');
+    document.getElementById('splitLoading').style.display = 'none';
+    document.getElementById('splitEmpty').style.display   = 'none';
+    document.getElementById('splitContent').style.display = 'none';
+    let errEl = document.getElementById('splitError');
+    if (!errEl) {
+      errEl = document.createElement('div');
+      errEl.id = 'splitError';
+      errEl.className = 'state-placeholder';
+      document.getElementById('panel-split').appendChild(errEl);
+    }
+    errEl.style.display = 'flex';
+    errEl.innerHTML = `<p style="color:var(--vscode-editorError-foreground,#f14c4c)">\u26a0 ${escH(msg || 'Analysis failed.')}</p><span class="hint">Check the AutoDebug AI Output panel for details.</span>`;
+  }
+
+  // Toggle a proposed file card open/closed
+  function toggleFileCard(idx) {
+    const body    = document.getElementById('split-card-body-' + idx);
+    const chevron = document.getElementById('split-card-chev-' + idx);
+    if (!body) { return; }
+    const open = body.classList.toggle('open');
+    if (chevron) { chevron.classList.toggle('open', open); }
+  }
+
+  function renderSplitPlan() {
+    const d = state.splitPlan;
+    if (!d) { return; }
+    switchTab('split');
+    document.getElementById('splitLoading').style.display = 'none';
+    document.getElementById('splitEmpty').style.display   = 'none';
+    const errEl = document.getElementById('splitError');
+    if (errEl) { errEl.style.display = 'none'; }
+    const content = document.getElementById('splitContent');
+    content.style.display = 'flex';
+
+    // File name
+    const shortFile = (d.sourceFile || '').split('/').pop() || d.sourceFile || '\u2014';
+    document.getElementById('splitFileName').textContent = shortFile;
+
+    // Metrics
+    const healthCls = d.health === 'healthy' ? 'health-healthy' : d.health === 'critical' ? 'health-critical' : 'health-moderate';
+    document.getElementById('splitMetrics').innerHTML = `
+      <div class="split-metric ${healthCls}">
+        <span class="split-metric-val">${escH(String(d.health || '\u2014'))}</span>
+        <span class="split-metric-lbl">Health</span>
+      </div>
+      <div class="split-metric">
+        <span class="split-metric-val">${escH(String(d.maintainability ?? '\u2014'))}</span>
+        <span class="split-metric-lbl">MI Score</span>
+      </div>
+      <div class="split-metric">
+        <span class="split-metric-val">${escH(String(d.extractionCount ?? 0))}</span>
+        <span class="split-metric-lbl">Extractions</span>
+      </div>
+      <div class="split-metric">
+        <span class="split-metric-val">${escH(String(d.avgComplexity ?? '\u2014'))}</span>
+        <span class="split-metric-lbl">Complexity</span>
+      </div>`;
+
+    // Recommendation
+    const recEl = document.getElementById('splitRecommendation');
+    if (d.recommendation) { recEl.style.display = 'block'; recEl.textContent = d.recommendation; }
+    else { recEl.style.display = 'none'; }
+
+    // Proposed files — expandable cards with generated code
+    const filesBlock = document.getElementById('splitFilesBlock');
+    const filesList  = document.getElementById('splitFilesList');
+    const files      = d.proposedFiles || [];
+    if (files.length) {
+      filesBlock.style.display = 'block';
+      document.getElementById('splitFilesCount').textContent = files.length;
+
+      filesList.innerHTML = files.map((f, i) => {
+        const hasCode   = f.generatedContent && f.generatedContent.trim().length > 10;
+        const testShort = f.testFile ? f.testFile.split('/').pop() : '';
+        const linksHtml = [
+          ...(f.linkedTo   || []).map(l => `<span class="split-link-tag">\u2192 ${escH(l)}</span>`),
+          ...(f.linkedFrom || []).map(l => `<span class="split-link-tag">\u2190 ${escH(l)}</span>`),
+        ].join('');
+
+        return `<div class="split-file-card">
+          <div class="split-file-card-header" onclick="toggleFileCard(${i})">
+            <span class="split-file-chevron" id="split-card-chev-${i}">\u25b6</span>
+            <span class="split-file-card-name">${escH(f.fileName)}</span>
+            <span class="split-file-card-meta">~${escH(String(f.lines || 0))} lines</span>
+          </div>
+          <div class="split-file-card-body" id="split-card-body-${i}">
+            <div class="split-file-region-tag">Region: <strong>${escH(f.regionName || '')}</strong>${testShort ? `  \u00b7 test: ${escH(testShort)}` : ''}</div>
+            ${linksHtml ? `<div class="split-link-row">${linksHtml}</div>` : ''}
+            ${hasCode
+              ? `<div class="split-code-block">${escH(f.generatedContent)}</div>`
+              : `<div style="padding:6px 12px;font-size:11px;color:var(--vscode-descriptionForeground,#888)">Run <strong>AST + AI</strong> to generate full code.</div>`
+            }
+          </div>
+        </div>`;
+      }).join('');
+    } else {
+      filesBlock.style.display = 'none';
+    }
+
+    // Circular risks
+    const risksBlock = document.getElementById('splitRisksBlock');
+    const risksList  = document.getElementById('splitRisksList');
+    const risks      = d.circularRisks || [];
+    if (risks.length) {
+      risksBlock.style.display = 'block';
+      document.getElementById('splitRisksCount').textContent = risks.length;
+      risksList.innerHTML = risks.map(r => `<div class="split-risk-row">${I_split.alertTriangle} ${escH(String(r))}</div>`).join('');
+    } else {
+      risksBlock.style.display = 'none';
+    }
+
+    // Critical smells
+    const smellsBlock = document.getElementById('splitSmellsBlock');
+    const smellsList  = document.getElementById('splitSmellsList');
+    const smells      = d.criticalSmells || [];
+    if (smells.length) {
+      smellsBlock.style.display = 'block';
+      document.getElementById('splitSmellsCount').textContent = smells.length;
+      smellsList.innerHTML = smells.map(s => `<div class="split-smell-row">${I_split.alertTriangle} ${escH(String(s))}</div>`).join('');
+    } else {
+      smellsBlock.style.display = 'none';
+    }
+
+    // Show Create Files footer only if there are actual files to write
+    const footer = document.getElementById('splitFooter');
+    if (footer) { footer.style.display = files.filter(f => !f.routedTo).length > 0 ? 'block' : 'none'; }
+  }
+
+  // ── Init ──
+  initIcons();
+  vscode.postMessage({ type: 'webviewReady' });
+</script>
+</body>
+</html>
