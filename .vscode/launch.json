@@ -1,0 +1,17 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Run AutoDebug AI Extension",
+      "type": "extensionHost",
+      "request": "launch",
+      "args": [
+        "--extensionDevelopmentPath=${workspaceFolder}/autodebug-ai"
+      ],
+      "outFiles": [
+        "${workspaceFolder}/autodebug-ai/out/**/*.js"
+      ],
+      "preLaunchTask": "build: autodebug-ai"
+    }
+  ]
+}

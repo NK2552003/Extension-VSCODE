@@ -1,0 +1,45 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "build: autodebug-ai",
+      "type": "shell",
+      "command": "npm",
+      "args": [
+        "run",
+        "compile",
+        "--prefix",
+        "${workspaceFolder}/autodebug-ai"
+      ],
+      "problemMatcher": [
+        "$tsc"
+      ],
+      "group": {
+        "kind": "build",
+        "isDefault": true
+      },
+      "presentation": {
+        "reveal": "silent"
+      }
+    },
+    {
+      "label": "watch: autodebug-ai",
+      "type": "shell",
+      "command": "npm",
+      "args": [
+        "run",
+        "watch",
+        "--prefix",
+        "${workspaceFolder}/autodebug-ai"
+      ],
+      "problemMatcher": [
+        "$tsc-watch"
+      ],
+      "isBackground": true,
+      "group": "build",
+      "presentation": {
+        "reveal": "never"
+      }
+    }
+  ]
+}
